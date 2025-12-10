@@ -1,0 +1,140 @@
+// 1. GİRİŞLERİ DİZİYE AKTARMA (MAPPING)
+#temp_Ready[1] := #i_M1_Ready;
+#temp_Ready[2] := #i_M2_Ready;
+#temp_Ready[3] := #i_M3_Ready;
+#temp_Ready[4] := #i_M4_Ready;
+#temp_Ready[5] := #i_M5_Ready;
+
+// Saat Palsini Yakala
+#stat_RTrig(CLK := #i_Clock_1Hz);
+
+#temp_AvailQty := 0;
+#temp_RunQty := 0;
+
+FOR #temp_i := 1 TO 5 DO
+    // Saat Sayacı 
+    IF #stat_CmdStart[#temp_i] AND #stat_RTrig.Q THEN
+        #stat_RunSecs[#temp_i] := #stat_RunSecs[#temp_i] + 1;
+    END_IF;
+    
+    // Reset İşlemi 
+    IF #i_ResetAlarms THEN
+        #stat_RunSecs[#temp_i] := 0;
+    END_IF;
+    
+    // Hazır Değilse Start'ı Kes
+    IF NOT #temp_Ready[#temp_i] THEN
+        #stat_CmdStart[#temp_i] := FALSE;
+    ELSE
+        // Hazırsa "Sağlam" sayısına ekle
+        #temp_AvailQty := #temp_AvailQty + 1;
+    END_IF;
+    
+    // Çalışanları Say 
+    IF #stat_CmdStart[#temp_i] THEN
+        #temp_RunQty := #temp_RunQty + 1;
+    END_IF;
+END_FOR;
+
+// Çıkışa Aktar
+#q_ActiveCount := #temp_RunQty;
+
+// Kapasite Kontrolü
+IF #i_SetMotorCount > #temp_AvailQty THEN
+    #q_InsufficientCap := TRUE;
+    #temp_SafeSet := #temp_AvailQty;
+ELSE
+    #q_InsufficientCap := FALSE;
+    #temp_SafeSet := #i_SetMotorCount;
+END_IF;
+
+// --- ROTASYON ZAMANLAYICISI ---
+#stat_RotationTimer(IN := #i_SystemEnable AND
+                    (#temp_RunQty = #temp_SafeSet) AND
+                    (#temp_RunQty > 0) AND
+                    (#temp_AvailQty > #temp_SafeSet),
+                    PT := #i_RotationInterval);
+
+#q_RotationTrigger := #stat_RotationTimer.Q;
+
+IF #stat_RotationTimer.Q THEN
+    #temp_MaxTime := -1;
+    #temp_BestStop := 0;
+    
+    FOR #temp_k := 1 TO 5 DO
+        IF #stat_CmdStart[#temp_k] THEN
+            IF #stat_RunSecs[#temp_k] > #temp_MaxTime THEN
+                #temp_MaxTime := #stat_RunSecs[#temp_k];
+                #temp_BestStop := #temp_k;
+            END_IF;
+        END_IF;
+    END_FOR;
+    
+    IF #temp_BestStop > 0 THEN
+        #stat_CmdStart[#temp_BestStop] := FALSE;
+    END_IF;
+END_IF;
+
+// --- GEÇİŞ ZAMANLAYICISI ---
+#stat_StageTimer(IN := (#temp_RunQty <> #temp_SafeSet) AND #i_SystemEnable,
+                 PT := #i_StageDelayTime);
+
+IF #stat_StageTimer.Q AND #i_SystemEnable THEN
+    
+    // START VERME 
+    IF #temp_RunQty < #temp_SafeSet THEN
+        #temp_MinTime := 2147483647;
+        #temp_BestStart := 0;
+        
+        FOR #temp_k := 1 TO 5 DO
+            IF #temp_Ready[#temp_k] AND NOT #stat_CmdStart[#temp_k] THEN
+                IF #stat_RunSecs[#temp_k] < #temp_MinTime THEN
+                    #temp_MinTime := #stat_RunSecs[#temp_k];
+                    #temp_BestStart := #temp_k;
+                END_IF;
+            END_IF;
+        END_FOR;
+        
+        IF #temp_BestStart > 0 THEN
+            #stat_CmdStart[#temp_BestStart] := TRUE;
+        END_IF;
+        
+        // STOP VERME
+    ELSIF #temp_RunQty > #temp_SafeSet THEN
+        #temp_MaxTime := -1;
+        #temp_BestStop := 0;
+        
+        FOR #temp_k := 1 TO 5 DO
+            IF #stat_CmdStart[#temp_k] THEN
+                IF #stat_RunSecs[#temp_k] > #temp_MaxTime THEN
+                    #temp_MaxTime := #stat_RunSecs[#temp_k];
+                    #temp_BestStop := #temp_k;
+                END_IF;
+            END_IF;
+        END_FOR;
+        
+        IF #temp_BestStop > 0 THEN
+            #stat_CmdStart[#temp_BestStop] := FALSE;
+        END_IF;
+    END_IF;
+END_IF;
+
+// Sistem Kapalıysa Hepsini Kes
+IF NOT #i_SystemEnable THEN
+    FOR #temp_i := 1 TO 5 DO
+        #stat_CmdStart[#temp_i] := FALSE;
+    END_FOR;
+END_IF;
+
+// ÇIKIŞLARI AKTARMA
+#q_M1_Start := #stat_CmdStart[1];
+#q_M2_Start := #stat_CmdStart[2];
+#q_M3_Start := #stat_CmdStart[3];
+#q_M4_Start := #stat_CmdStart[4];
+#q_M5_Start := #stat_CmdStart[5];
+
+#q_M1_Hours := DINT_TO_REAL(#stat_RunSecs[1]) / 3600.0;
+#q_M2_Hours := DINT_TO_REAL(#stat_RunSecs[2]) / 3600.0;
+#q_M3_Hours := DINT_TO_REAL(#stat_RunSecs[3]) / 3600.0;
+#q_M4_Hours := DINT_TO_REAL(#stat_RunSecs[4]) / 3600.0;
+#q_M5_Hours := DINT_TO_REAL(#stat_RunSecs[5]) / 3600.0;
