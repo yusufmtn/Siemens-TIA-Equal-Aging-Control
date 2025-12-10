@@ -14,7 +14,7 @@ Birden fazla motorun çalışma saatlerini birbirine eşitleyerek bakım ömürl
 
 
 ## 💻 Kullanılan Teknolojiler
-- **Yazılım:** Siemens TIA Portal V17 / PLCSIM
+- **Yazılım:** Siemens TIA Portal V15 / PLCSIM
 - **PLC:** S7-1200 / 1214C DC/DC/DC
 - **Dil:** SCL (Structured Control Language)
 
